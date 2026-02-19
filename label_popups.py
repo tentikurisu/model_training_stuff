@@ -90,7 +90,7 @@ class SimpleLabeler:
                 f.write(f"0 {xc:.6f} {yc:.6f} {w:.6f} {h:.6f}\n")
 
     def run(self):
-        cv2.namedWindow("Labeler")
+        cv2.namedWindow("Labeler", cv2.WINDOW_NORMAL)
         cv2.setMouseCallback("Labeler", self.mouse_callback)
 
         while self.current_idx < len(self.images):
@@ -100,17 +100,8 @@ class SimpleLabeler:
                 continue
 
             self.img_h, self.img_w = img.shape[:2]
-
-            # Resize to fit screen if too large
-            display = img.copy()
-            max_w, max_h = 1280, 720
-            if self.img_w > max_w or self.img_h > max_h:
-                scale = min(max_w / self.img_w, max_h / self.img_h)
-                new_w = int(self.img_w * scale)
-                new_h = int(self.img_h * scale)
-                display = cv2.resize(img, (new_w, new_h))
-            else:
-                scale = 1.0
+            display = img  # Full native resolution
+            scale = 1.0
 
             self.boxes = self.load_existing_labels()
 
