@@ -1,0 +1,28 @@
+# Popup Detector Configuration
+# ===========================================
+# Edit these values to tweak detection settings
+
+# -------------------- MODEL --------------------
+model_path: models/popup_detector_best.pt
+
+# Detection thresholds
+conf_threshold: 0.15
+iou_threshold: 0.5
+
+# Augment at inference
+augment: true
+
+# -------------------- PATHS --------------------
+input_folder: test_images
+output_folder: output/crops
+
+# -------------------- PROCESSING --------------------
+images_per_run: 50  # How many random images to process per run
+
+# -------------------- S3 UPLOAD --------------------
+s3_bucket: popup-detector-uploads
+s3_prefix: ocr_queue/
+aws_region: us-east-1
+
+# -------------------- OUTPUT --------------------
+save_coordinates: true
