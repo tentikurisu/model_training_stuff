@@ -1,0 +1,40 @@
+# Training Configuration
+# =====================================================
+# Edit these values to customize training
+
+# -------------------- DATA --------------------
+# Path to your training images folder
+data_folder: dataset_final_train/train/images
+
+# Path to your labels folder (optional - leave empty if same as images)
+labels_folder: dataset_final_train/train/labels
+
+# -------------------- SPLIT --------------------
+# What percentage of data to use for testing (0.2 = 20%)
+test_split: 0.2
+
+# -------------------- MODEL --------------------
+# Base model to use (yolov8n = fast, yolov8s = small, yolov8m = medium)
+# yolov8n: Fastest, smallest - good for quick tests
+# yolov8s: Small - balanced
+# yolov8m: Medium - better accuracy, slower
+base_model: yolov8n
+
+# -------------------- TRAINING --------------------
+# Number of epochs (how many times to see all data)
+# 100 = standard, 50 = faster, 200 = more training
+epochs: 100
+
+# Image size (640 = standard, 1280 = higher quality but slower)
+imgsz: 640
+
+# Batch size (16 = standard, 8 = less memory, 32 = faster)
+batch: 16
+
+# -------------------- OUTPUT --------------------
+# Name for this training run
+run_name: popup_detector
+
+# -------------------- EVALUATION --------------------
+# Automatically evaluate after training
+auto_eval: true
