@@ -15,7 +15,6 @@ Controls:
 
 import cv2
 import argparse
-import os
 from pathlib import Path
 
 
@@ -45,15 +44,20 @@ def main():
     start_x = 0
     start_y = 0
     current_box = None
+    img = None
+    orig_img = None
+    img_h = 0
+    img_w = 0
+    scale = 1.0
 
     def mouse_callback(event, x, y, flags, param):
-        nonlocal drawing, start_x, start_y, current_box, img_h, img_w
+        nonlocal drawing, start_x, start_y, current_box, img_h, img_w, scale, orig_img
         if event == cv2.EVENT_LBUTTONDOWN:
             drawing = True
-            start_x = x
-            start_y = y
+            start_x = int(x * scale)
+            start_y = int(y * scale)
         elif event == cv2.EVENT_MOUSEMOVE and drawing:
-            current_box = (start_x, start_y, x, y)
+            current_box = (start_x, start_y, int(x * scale), int(y * scale))
         elif event == cv2.EVENT_LBUTTONUP:
             drawing = False
             if current_box:
@@ -68,17 +72,29 @@ def main():
                     boxes.append((0, xc, yc, bw, bh))
                 current_box = None
 
-    cv2.namedWindow("Labeler")
+    cv2.namedWindow("Labeler", cv2.WINDOW_NORMAL)
+    cv2.resizeWindow("Labeler", 1280, 720)
     cv2.setMouseCallback("Labeler", mouse_callback)
 
     while idx < len(images):
         img_path = images[idx]
-        img = cv2.imread(str(img_path))
-        if img is None:
+        orig_img = cv2.imread(str(img_path))
+        if orig_img is None:
             idx += 1
             continue
 
-        img_h, img_w = img.shape[:2]
+        img_h, img_w = orig_img.shape[:2]
+
+        # Resize to fit window if too big
+        max_w, max_h = 1280, 720
+        scale = 1.0
+        if img_w > max_w or img_h > max_h:
+            scale = min(max_w / img_w, max_h / img_h)
+            new_w = int(img_w * scale)
+            new_h = int(img_h * scale)
+            img = cv2.resize(orig_img, (new_w, new_h))
+        else:
+            img = orig_img.copy()
 
         # Load existing labels
         boxes = []
@@ -99,10 +115,10 @@ def main():
 
             # Draw existing boxes
             for cls, xc, yc, bw, bh in boxes:
-                x1 = int((xc - bw / 2) * img_w)
-                y1 = int((yc - bh / 2) * img_h)
-                x2 = int((xc + bw / 2) * img_w)
-                y2 = int((yc + bh / 2) * img_h)
+                x1 = int((xc - bw / 2) * img_w * scale)
+                y1 = int((yc - bh / 2) * img_h * scale)
+                x2 = int((xc + bw / 2) * img_w * scale)
+                y2 = int((yc + bh / 2) * img_h * scale)
                 cv2.rectangle(disp, (x1, y1), (x2, y2), (0, 255, 0), 2)
 
             # Draw current box
@@ -132,7 +148,6 @@ def main():
 
             cv2.imshow("Labeler", disp)
 
-            # Use waitKey(0) to wait indefinitely for key press
             key = cv2.waitKey(0) & 0xFF
 
             if key == ord("s"):
