@@ -128,6 +128,7 @@ class SimpleLabeler:
                 if x2 - x1 > 10 and y2 - y1 > 10:
                     self.boxes.append((x1, y1, x2, y2))
                 self.current_box = None
+                self.current_box = None
 
     def draw_boxes(self, img):
         """Draw all boxes on image"""
