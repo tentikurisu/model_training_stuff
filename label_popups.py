@@ -1,6 +1,6 @@
 """
-Simple Popup Labeler
-Label popups by drawing bounding boxes.
+Simple popup labeler using mouse clicks
+Draw boxes around popups - click and drag
 
 Usage:
     python label_popups.py --images /path/to/images --labels /path/to/labels
@@ -8,8 +8,9 @@ Usage:
 Controls:
     Click + Drag: Draw box
     s: Save and next
-    d: Skip
-    u: Undo last box
+    d: Skip (don't save)
+    a: Previous
+    c: Clear all boxes
     q: Quit
 """
 
@@ -18,146 +19,172 @@ import argparse
 from pathlib import Path
 
 
-def main():
+class SimpleLabeler:
+    def __init__(self, image_dir, label_dir):
+        self.image_dir = Path(image_dir)
+        self.label_dir = Path(label_dir)
+        self.label_dir.mkdir(parents=True, exist_ok=True)
+
+        # Get all image types
+        self.images = []
+        for ext in [".jpg", ".jpeg", ".png", ".bmp"]:
+            self.images.extend(list(self.image_dir.glob(f"*{ext}")))
+            self.images.extend(list(self.image_dir.glob(f"*{ext.upper()}")))
+        self.images = sorted(set(self.images))
+
+        self.current_idx = 0
+        self.boxes = []
+        self.drawing = False
+        self.start_x = self.start_y = 0
+        self.current_box = None
+        self.img_h = 0
+        self.img_w = 0
+
+    def mouse_callback(self, event, x, y, flags, param):
+        if event == cv2.EVENT_LBUTTONDOWN:
+            self.drawing = True
+            self.start_x, self.start_y = x, y
+
+        elif event == cv2.EVENT_MOUSEMOVE:
+            if self.drawing:
+                self.current_box = (self.start_x, self.start_y, x, y)
+
+        elif event == cv2.EVENT_LBUTTONUP:
+            self.drawing = False
+            x1, y1 = min(self.start_x, x), min(self.start_y, y)
+            x2, y2 = max(self.start_x, x), max(self.start_y, y)
+            if x2 - x1 > 10 and y2 - y1 > 10:
+                self.boxes.append((x1, y1, x2, y2))
+            self.current_box = None
+
+    def load_existing_labels(self):
+        label_file = self.label_dir / f"{self.images[self.current_idx].stem}.txt"
+        boxes = []
+        if label_file.exists():
+            with open(label_file) as f:
+                for line in f:
+                    parts = line.strip().split()
+                    if len(parts) >= 5:
+                        _, xc, yc, w, h = map(float, parts[:5])
+                        x1 = int((xc - w / 2) * self.img_w)
+                        y1 = int((yc - h / 2) * self.img_h)
+                        x2 = int((xc + w / 2) * self.img_w)
+                        y2 = int((yc + h / 2) * self.img_h)
+                        boxes.append((x1, y1, x2, y2))
+        return boxes
+
+    def save_labels(self):
+        if not self.boxes:
+            # Remove label file if no boxes
+            label_file = self.label_dir / f"{self.images[self.current_idx].stem}.txt"
+            if label_file.exists():
+                label_file.unlink()
+            return
+        label_file = self.label_dir / f"{self.images[self.current_idx].stem}.txt"
+        with open(label_file, "w") as f:
+            for x1, y1, x2, y2 in self.boxes:
+                xc = (x1 + x2) / 2 / self.img_w
+                yc = (y1 + y2) / 2 / self.img_h
+                w = (x2 - x1) / self.img_w
+                h = (y2 - y1) / self.img_h
+                f.write(f"0 {xc:.6f} {yc:.6f} {w:.6f} {h:.6f}\n")
+
+    def run(self):
+        cv2.namedWindow("Labeler")
+        cv2.setMouseCallback("Labeler", self.mouse_callback)
+
+        while self.current_idx < len(self.images):
+            img = cv2.imread(str(self.images[self.current_idx]))
+            if img is None:
+                self.current_idx += 1
+                continue
+
+            self.img_h, self.img_w = img.shape[:2]
+
+            # Resize to fit screen if too large
+            display = img.copy()
+            max_w, max_h = 1280, 720
+            if self.img_w > max_w or self.img_h > max_h:
+                scale = min(max_w / self.img_w, max_h / self.img_h)
+                new_w = int(self.img_w * scale)
+                new_h = int(self.img_h * scale)
+                display = cv2.resize(img, (new_w, new_h))
+            else:
+                scale = 1.0
+
+            self.boxes = self.load_existing_labels()
+
+            while True:
+                disp = display.copy()
+
+                # Draw existing boxes
+                for x1, y1, x2, y2 in self.boxes:
+                    sx1, sy1 = int(x1 * scale), int(y1 * scale)
+                    sx2, sy2 = int(x2 * scale), int(y2 * scale)
+                    cv2.rectangle(disp, (sx1, sy1), (sx2, sy2), (0, 255, 0), 2)
+
+                # Draw current box
+                if self.current_box:
+                    x1, y1, x2, y2 = self.current_box
+                    sx1, sy1 = int(x1 * scale), int(y1 * scale)
+                    sx2, sy2 = int(x2 * scale), int(y2 * scale)
+                    cv2.rectangle(disp, (sx1, sy1), (sx2, sy2), (255, 0, 0), 2)
+
+                # Info
+                cv2.putText(
+                    disp,
+                    f"Image {self.current_idx + 1}/{len(self.images)}: {self.images[self.current_idx].name[:40]}",
+                    (10, 30),
+                    cv2.FONT_HERSHEY_SIMPLEX,
+                    0.6,
+                    (255, 255, 255),
+                    2,
+                )
+                cv2.putText(
+                    disp,
+                    f"Boxes: {len(self.boxes)} | s=save/next d=skip a=prev c=clear q=quit",
+                    (10, 60),
+                    cv2.FONT_HERSHEY_SIMPLEX,
+                    0.5,
+                    (200, 200, 200),
+                    1,
+                )
+
+                cv2.imshow("Labeler", disp)
+                key = cv2.waitKey(0) & 0xFF
+
+                if key == ord("q"):
+                    cv2.destroyAllWindows()
+                    return
+                elif key == ord("s"):
+                    self.save_labels()
+                    print(
+                        f"Saved: {self.images[self.current_idx].name} ({len(self.boxes)} boxes)"
+                    )
+                    self.current_idx += 1
+                    break
+                elif key == ord("d"):
+                    print(f"Skipped: {self.images[self.current_idx].name}")
+                    self.current_idx += 1
+                    break
+                elif key == ord("a"):
+                    self.current_idx = max(0, self.current_idx - 1)
+                    break
+                elif key == ord("c"):
+                    self.boxes = []
+                    print("Cleared all boxes")
+
+        cv2.destroyAllWindows()
+        print("Done!")
+
+
+if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--images", required=True)
     parser.add_argument("--labels", required=True)
     args = parser.parse_args()
 
-    image_dir = Path(args.images)
-    label_dir = Path(args.labels)
-    label_dir.mkdir(parents=True, exist_ok=True)
-
-    images = []
-    for ext in [".jpg", ".jpeg", ".png", ".bmp"]:
-        images.extend(list(image_dir.glob(f"*{ext}")))
-        images.extend(list(image_dir.glob(f"*{ext.upper()}")))
-    images = sorted(set(images))
-
-    print(f"Found {len(images)} images")
-    print("Controls: s=save/next, d=skip, u=undo, q=quit")
-
-    idx = 0
-    boxes = []
-    current_box = None
-    orig_img = None
-    scale = 1.0
-
-    def mouse_callback(event, x, y, flags, param):
-        nonlocal current_box, boxes
-        if event == cv2.EVENT_LBUTTONDOWN:
-            x0, y0 = int(x / scale), int(y / scale)
-            current_box = [x0, y0, x0, y0]
-        elif event == cv2.EVENT_MOUSEMOVE and current_box:
-            current_box[2] = int(x / scale)
-            current_box[3] = int(y / scale)
-        elif event == cv2.EVENT_LBUTTONUP and current_box:
-            x1, y1 = current_box[2], current_box[3]
-            x0, y0 = current_box[0], current_box[1]
-            x0, x1 = min(x0, x1), max(x0, x1)
-            y0, y1 = min(y0, y1), max(y0, y1)
-            if x1 - x0 > 5 and y1 - y0 > 5:
-                img_h, img_w = orig_img.shape[:2]
-                xc = (x0 + x1) / 2 / img_w
-                yc = (y0 + y1) / 2 / img_h
-                bw = (x1 - x0) / img_w
-                bh = (y1 - y0) / img_h
-                boxes.append((0, xc, yc, bw, bh))
-            current_box = None
-
-    cv2.namedWindow("Labeler", cv2.WINDOW_NORMAL)
-    cv2.resizeWindow("Labeler", 800, 600)
-    cv2.setMouseCallback("Labeler", mouse_callback)
-
-    while idx < len(images):
-        img_path = images[idx]
-        orig_img = cv2.imread(str(img_path))
-        if orig_img is None:
-            idx += 1
-            continue
-
-        img_h, img_w = orig_img.shape[:2]
-
-        # Always scale to fit window
-        win_w, win_h = 790, 590
-        scale = min(win_w / img_w, win_h / img_h)
-        disp_w = int(img_w * scale)
-        disp_h = int(img_h * scale)
-
-        # Load existing
-        boxes = []
-        label_file = label_dir / f"{img_path.stem}.txt"
-        if label_file.exists():
-            with open(label_file, "r") as f:
-                for line in f:
-                    parts = line.strip().split()
-                    if len(parts) >= 5:
-                        cls, xc, yc, w, h = int(parts[0]), *map(float, parts[1:5])
-                        boxes.append((cls, xc, yc, w, h))
-
-        current_box = None
-
-        while True:
-            disp = cv2.resize(orig_img, (disp_w, disp_h))
-
-            # Draw boxes
-            for cls, xc, yc, bw, bh in boxes:
-                x1 = int((xc - bw / 2) * img_w * scale)
-                y1 = int((yc - bh / 2) * img_h * scale)
-                x2 = int((xc + bw / 2) * img_w * scale)
-                y2 = int((yc + bh / 2) * img_h * scale)
-                cv2.rectangle(disp, (x1, y1), (x2, y2), (0, 255, 0), 2)
-
-            if current_box:
-                x1 = int(current_box[0] * scale)
-                y1 = int(current_box[1] * scale)
-                x2 = int(current_box[2] * scale)
-                y2 = int(current_box[3] * scale)
-                cv2.rectangle(disp, (x1, y1), (x2, y2), (255, 0, 0), 2)
-
-            cv2.putText(
-                disp,
-                f"{idx + 1}/{len(images)}: {img_path.name[:40]}",
-                (10, 25),
-                cv2.FONT_HERSHEY_SIMPLEX,
-                0.5,
-                (255, 255, 255),
-                2,
-            )
-            cv2.putText(
-                disp,
-                f"Boxes: {len(boxes)} | s=save d=skip u=undo q=quit",
-                (10, 50),
-                cv2.FONT_HERSHEY_SIMPLEX,
-                0.4,
-                (200, 200, 200),
-                1,
-            )
-
-            cv2.imshow("Labeler", disp)
-            key = cv2.waitKey(0) & 0xFF
-
-            if key == ord("s"):
-                with open(label_file, "w") as f:
-                    for cls, xc, yc, bw, bh in boxes:
-                        f.write(f"{cls} {xc:.6f} {yc:.6f} {bw:.6f} {bh:.6f}\n")
-                print(f"Saved: {img_path.name} ({len(boxes)} boxes)")
-                idx += 1
-                break
-            elif key == ord("d"):
-                print(f"Skipped: {img_path.name}")
-                idx += 1
-                break
-            elif key == ord("u") and boxes:
-                boxes.pop()
-                print(f"Undo: {len(boxes)} boxes")
-            elif key == ord("q"):
-                cv2.destroyAllWindows()
-                return
-
-    cv2.destroyAllWindows()
-    print("Done!")
-
-
-if __name__ == "__main__":
-    main()
+    labeler = SimpleLabeler(args.images, args.labels)
+    print(f"Found {len(labeler.images)} images")
+    print("Controls: s=save/next, d=skip, a=prev, c=clear, q=quit")
+    labeler.run()
